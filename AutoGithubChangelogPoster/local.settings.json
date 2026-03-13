@@ -1,0 +1,25 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+
+    "AZURE_STORAGE_CONNECTION_STRING": "UseDevelopmentStorage=true",
+    "STATE_CONTAINER_NAME": "github-changelog-state",
+
+    "TWITTER_GITHUB_CHANGELOG_API_KEY": "",
+    "TWITTER_GITHUB_CHANGELOG_API_SECRET": "",
+    "TWITTER_GITHUB_CHANGELOG_ACCESS_TOKEN": "",
+    "TWITTER_GITHUB_CHANGELOG_ACCESS_TOKEN_SECRET": "",
+
+    "ENABLE_AI_SUMMARIES": "true",
+    "AI_ENDPOINT": "",
+    "AI_API_KEY": "",
+    "AI_MODEL": "gpt-4o-mini",
+
+    "X_GITHUB_CHANGELOG_PREMIUM_MODE": "false",
+    "X_GITHUB_CHANGELOG_SINGLE_POST_MODE": "false",
+
+    "GITHUB_CHANGELOG_FEED_URL": "https://github.blog/changelog/feed/"
+  }
+}
