@@ -3,7 +3,7 @@
 Posting-only Azure Functions app for GitHub Changelog updates to X.
 
 ## Scope
-- Includes: periodic GitHub changelog posting (`Notifier`)
+- Includes: periodic GitHub changelog posting (`GitHubChangelogNotifier`)
 - Excludes: weekly recap and Copilot lookup endpoint
 
 ## Project layout
@@ -15,15 +15,6 @@ Posting-only Azure Functions app for GitHub Changelog updates to X.
    - `dotnet build g:\auto-github-changelog-poster\auto-github-changelog-poster.slnx`
 3. Run (from project folder):
    - `func host start`
-
-## Test endpoint
-- Function: `Test`
-- Route: `/api/test`
-- Query params:
-   - `mode=thread|single|premium` (default: `thread`)
-   - `ai=true|false` (default: `true`)
-- Example:
-   - `/api/test?mode=single&ai=false`
 
 ## Required settings
 - `TWITTER_GITHUB_CHANGELOG_API_KEY`

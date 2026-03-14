@@ -12,7 +12,7 @@
     "TWITTER_GITHUB_CHANGELOG_ACCESS_TOKEN": "",
     "TWITTER_GITHUB_CHANGELOG_ACCESS_TOKEN_SECRET": "",
 
-    "ENABLE_AI_SUMMARIES": "true",
+    "ENABLE_AI_SUMMARIES": "false",
     "AI_ENDPOINT": "",
     "AI_API_KEY": "",
     "AI_MODEL": "gpt-4o-mini",

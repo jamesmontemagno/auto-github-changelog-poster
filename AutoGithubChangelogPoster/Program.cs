@@ -1,4 +1,4 @@
-using AutoGithubChangelogPoster.Services;
+using AutoTweetRss.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -22,13 +22,16 @@ var host = new HostBuilder()
 			});
 		}
 
-		services.AddSingleton<FeedService>();
+		services.AddSingleton<RssFeedService>();
+		services.AddSingleton<GitHubChangelogFeedService>();
+		services.AddSingleton<OAuth1Helper>();
+		services.AddSingleton<TwitterApiClient>();
 		services.AddSingleton(sp =>
 		{
-			var logger = sp.GetRequiredService<ILogger<TwitterApiClient>>();
+			var logger = sp.GetRequiredService<ILogger<GitHubChangelogTwitterApiClient>>();
 			var httpFactory = sp.GetRequiredService<IHttpClientFactory>();
 			var oauth = new OAuth1Helper("TWITTER_GITHUB_CHANGELOG_");
-			return new TwitterApiClient(logger, httpFactory, oauth);
+			return new GitHubChangelogTwitterApiClient(logger, httpFactory, oauth);
 		});
 		services.AddSingleton<TweetFormatterService>();
 		services.AddSingleton<StateTrackingService>();
