@@ -372,6 +372,7 @@ internal static class ReleaseSummarizerPrompts
     - Prefer concrete capability/outcome phrases over complete sentences
     - paragraphs must be concise plain-text paragraphs
     - For non-premium/threaded output, paragraphs should stay under 200 characters
+    - Avoid emoji; prefer plain text (use zero emoji unless absolutely necessary)
     - Never include links, URLs, raw domain names, the @ character, hashtags, usernames, issue numbers, or markdown headings
     - Focus on product impact, workflows, and why the update matters
     - Avoid hype and repetition";
@@ -404,6 +405,7 @@ internal static class ReleaseSummarizerPrompts
     - Do not repeat or closely paraphrase the changelog title; assume the title is already shown in the post header
     - Focus each bullet on a distinct capability, change, or outcome
     - Paragraphs should explain what changed and why it matters
+    - Avoid emoji; prefer plain text (use zero emoji unless absolutely necessary)
     - {(premiumMode ? "Premium paragraphs can use richer detail, but still stay concise." : "Each paragraph must stay under 200 characters for thread follow-up posts.")}
     - Never include URLs, links, raw domain names, the @ character, hashtags, usernames, issue numbers, or markdown headings
     - Keep wording concrete and helpful for developers
