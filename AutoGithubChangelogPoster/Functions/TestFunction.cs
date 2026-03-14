@@ -30,7 +30,7 @@ public class TestFunction
 
         try
         {
-            var mode = (GetQueryParameter(req, "mode") ?? "thread").Trim().ToLowerInvariant();
+            var mode = (GetQueryParameter(req, "mode") ?? "single").Trim().ToLowerInvariant();
             if (mode is not ("thread" or "single" or "premium"))
             {
                 response.StatusCode = HttpStatusCode.BadRequest;

@@ -16,6 +16,28 @@ Posting-only Azure Functions app for GitHub Changelog updates to X.
 3. Run (from project folder):
    - `func host start`
 
+## Test endpoint
+- Function name: `Test`
+- Route: `GET /api/test`
+- Auth level: `Function` (include the function key as `?code=...` when calling)
+
+### Query parameters
+- `mode`: output shape for the latest changelog entry
+   - `single` (default): returns a single-post preview
+   - `thread`: returns a multi-post thread preview
+   - `premium`: returns a premium single-post preview
+- `ai`: `true`/`false` flag to enable AI summarization for the preview (default: `true`)
+
+### Example requests
+- Local (default single mode):
+   - `http://localhost:7071/api/test?code=<function-key>`
+- Local (thread mode, no AI):
+   - `http://localhost:7071/api/test?mode=thread&ai=false&code=<function-key>`
+- Azure (premium mode):
+   - `https://<function-app>.azurewebsites.net/api/test?mode=premium&code=<function-key>`
+
+The endpoint returns plain-text preview output with entry metadata and computed post length details. It does not publish to X.
+
 ## Required settings
 - `TWITTER_GITHUB_CHANGELOG_API_KEY`
 - `TWITTER_GITHUB_CHANGELOG_API_SECRET`
