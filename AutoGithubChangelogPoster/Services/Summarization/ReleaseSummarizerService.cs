@@ -14,6 +14,8 @@ public class ReleaseSummarizerService
 
     private readonly IChatClient _chatClient;
     private readonly ILogger<ReleaseSummarizerService> _logger;
+    private readonly string _endpointHost;
+    private readonly string _deploymentModel;
 
     private static readonly Regex HtmlTagPattern = new(@"<[^>]+>", RegexOptions.Compiled);
     private static readonly Regex WhitespacePattern = new(@"\s+", RegexOptions.Compiled);
@@ -28,6 +30,8 @@ public class ReleaseSummarizerService
         string deploymentModel)
     {
         _logger = logger;
+        _endpointHost = new Uri(endpoint).Host;
+        _deploymentModel = deploymentModel;
         _chatClient = CreateClient(endpoint, apiKey, deploymentModel);
     }
 
@@ -143,6 +147,34 @@ public class ReleaseSummarizerService
 
                 return null;
             }
+            catch (RequestFailedException ex)
+            {
+                _logger.LogError(ex,
+                    "Azure OpenAI request failed for AI plan for {Title} (attempt {Attempt}/{MaxRetries}). Status={Status}, ErrorCode={ErrorCode}, EndpointHost={EndpointHost}, Deployment={Deployment}.",
+                    releaseTitle,
+                    attempt,
+                    maxRetries,
+                    ex.Status,
+                    ex.ErrorCode,
+                    _endpointHost,
+                    _deploymentModel);
+
+                if (!IsRetryableAzureAiError(ex))
+                {
+                    _logger.LogWarning(
+                        "Stopping retries for AI plan for {Title} because this looks like a non-transient configuration/auth issue.",
+                        releaseTitle);
+                    return null;
+                }
+
+                if (attempt < maxRetries)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(attempt * 2), cancellationToken);
+                    continue;
+                }
+
+                return null;
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex,
@@ -209,6 +241,34 @@ public class ReleaseSummarizerService
                 _logger.LogWarning(ex,
                     "Timed out generating GitHub changelog single-post summary for {Title} (attempt {Attempt}/{MaxRetries}).",
                     releaseTitle, attempt, maxRetries);
+
+                if (attempt < maxRetries)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(attempt * 2), cancellationToken);
+                    continue;
+                }
+
+                return null;
+            }
+            catch (RequestFailedException ex)
+            {
+                _logger.LogError(ex,
+                    "Azure OpenAI request failed for single-post summary for {Title} (attempt {Attempt}/{MaxRetries}). Status={Status}, ErrorCode={ErrorCode}, EndpointHost={EndpointHost}, Deployment={Deployment}.",
+                    releaseTitle,
+                    attempt,
+                    maxRetries,
+                    ex.Status,
+                    ex.ErrorCode,
+                    _endpointHost,
+                    _deploymentModel);
+
+                if (!IsRetryableAzureAiError(ex))
+                {
+                    _logger.LogWarning(
+                        "Stopping retries for single-post summary for {Title} because this looks like a non-transient configuration/auth issue.",
+                        releaseTitle);
+                    return null;
+                }
 
                 if (attempt < maxRetries)
                 {
@@ -288,6 +348,9 @@ public class ReleaseSummarizerService
             ? seconds
             : DefaultSummaryPlanTimeoutSeconds;
     }
+
+    private static bool IsRetryableAzureAiError(RequestFailedException ex)
+        => ex.Status is 408 or 429 or 500 or 502 or 503 or 504;
 }
 
 internal static class ReleaseSummarizerPrompts
