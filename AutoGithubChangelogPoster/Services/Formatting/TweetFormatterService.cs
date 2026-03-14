@@ -189,8 +189,13 @@ public partial class TweetFormatterService
 
         string summary;
         var shouldUseAi = useAi || ShouldUseAiFromEnvironment();
-        if (shouldUseAi && _releaseSummarizer != null)
+        if (shouldUseAi)
         {
+            if (_releaseSummarizer == null)
+            {
+                throw new InvalidOperationException("AI summaries are enabled, but ReleaseSummarizerService is not configured.");
+            }
+
             try
             {
                 summary = await _releaseSummarizer.SummarizeSinglePostAsync(
@@ -200,8 +205,13 @@ public partial class TweetFormatterService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to generate GitHub changelog single post AI summary for {Title}. Falling back.", entry.Title);
-                summary = string.Empty;
+                _logger.LogError(ex, "Failed to generate GitHub changelog single post AI summary for {Title}. Aborting without fallback.", entry.Title);
+                throw;
+            }
+
+            if (string.IsNullOrWhiteSpace(summary))
+            {
+                throw new InvalidOperationException($"AI single-post summary was empty for {entry.Title}. Aborting without fallback.");
             }
         }
         else
@@ -232,8 +242,13 @@ public partial class TweetFormatterService
         bool isWeekly)
     {
         var shouldUseAi = useAi || ShouldUseAiFromEnvironment();
-        if (shouldUseAi && _releaseSummarizer != null)
+        if (shouldUseAi)
         {
+            if (_releaseSummarizer == null)
+            {
+                throw new InvalidOperationException("AI summaries are enabled, but ReleaseSummarizerService is not configured.");
+            }
+
             try
             {
                 var plan = await _releaseSummarizer.PlanSummaryAsync(
@@ -248,10 +263,13 @@ public partial class TweetFormatterService
                 {
                     return plan;
                 }
+
+                throw new InvalidOperationException($"AI summary plan was empty for {entry.Title}. Aborting without fallback.");
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to generate GitHub changelog AI summary for {Title}. Falling back.", entry.Title);
+                _logger.LogError(ex, "Failed to generate GitHub changelog AI summary for {Title}. Aborting without fallback.", entry.Title);
+                throw;
             }
         }
 
