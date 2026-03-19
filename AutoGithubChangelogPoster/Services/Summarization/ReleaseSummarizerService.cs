@@ -375,6 +375,11 @@ internal static class ReleaseSummarizerPrompts
     - Avoid emoji; prefer plain text (use zero emoji unless absolutely necessary)
     - Never include links, URLs, raw domain names, the @ character, hashtags, usernames, issue numbers, or markdown headings
     - Focus on product impact, workflows, and why the update matters
+    - Assume the post is published from an official GitHub account, so focus on what was announced rather than who announced it
+    - Never say or imply that GitHub announced, launched, shared, or introduced something in the opening
+    - If the content is negative or could be perceived as negative, keep the response shorter, flatter, and more succinct
+    - For negative or sensitive updates, do not expand on bullet points unless essential to explain the recap
+    - Keep tone neutral for negative or sensitive updates; avoid glowing positivity, hype, alarmist language, or dramatic framing
     - Avoid hype and repetition";
 
         public static string BuildChangelogPlanUserPrompt(
@@ -405,6 +410,11 @@ internal static class ReleaseSummarizerPrompts
     - Do not repeat or closely paraphrase the changelog title; assume the title is already shown in the post header
     - Focus each bullet on a distinct capability, change, or outcome
     - Paragraphs should explain what changed and why it matters
+    - Assume this will be posted from an official GitHub account, so frame the copy around the update itself instead of attributing it to GitHub
+    - Do not say that GitHub announced, launched, shared, or introduced something
+    - If the update is negative or could be perceived as negative, keep the response shorter and more succinct
+    - For negative or sensitive updates, avoid expanding on bullet points unless needed for accuracy
+    - Keep the tone neutral and recap-focused; avoid glowing positivity, hype, heavy negativity, or dramatic framing
     - Avoid emoji; prefer plain text (use zero emoji unless absolutely necessary)
     - {(premiumMode ? "Premium paragraphs can use richer detail, but still stay concise." : "Each paragraph must stay under 200 characters for thread follow-up posts.")}
     - Never include URLs, links, raw domain names, the @ character, hashtags, usernames, issue numbers, or markdown headings
@@ -413,7 +423,7 @@ internal static class ReleaseSummarizerPrompts
     - {(isWeekly ? "Synthesize themes across the week instead of repeating every title." : "Focus on the single changelog entry and its key takeaways.")}";
         }
 
-        public static string GetSinglePostSystemPrompt() => "You write concise GitHub changelog social posts. Return plain text only, with no markdown code fences, no @ character, and no URLs, links, or raw domain names.";
+        public static string GetSinglePostSystemPrompt() => "You write concise GitHub changelog social posts for an official GitHub account. Focus on what was announced, not who announced it. Never say or imply that GitHub announced, launched, shared, or introduced something. If the content is negative or could be perceived as negative, keep the post shorter, more neutral, and more succinct, avoid expanding on bullets unless essential, and avoid both glowing positivity and dramatic negativity. Return plain text only, with no markdown code fences, no @ character, and no URLs, links, or raw domain names.";
 
         public static string BuildSinglePostUserPrompt(string releaseTitle, string cleanedContent, int maxLength) =>
             $@"Summarize the given GitHub changelog entry.
@@ -438,6 +448,11 @@ internal static class ReleaseSummarizerPrompts
     - Simple words only
     - Shorten ""administrators"" to ""admins"", ""developers"" to ""devs"", ""organizations"" to ""orgs"", ""repositories"" to ""repos"", ""pull requests"" to ""PRs"", when helpful.
     - Focus on what devs can do now + what's now possible
+    - Assume this post comes from an official GitHub account, so the opening must focus on what changed, not on GitHub as the announcer
+    - Never say that GitHub announced, launched, shared, or introduced this update
+    - If the update is negative or could be perceived as negative, keep it shorter, more succinct, and more neutral
+    - For negative or sensitive updates, do not expand on bullet points unless essential for accuracy
+    - Avoid glowing positivity, hype, harsh negativity, or dramatic framing; stay focused on the recap
     - Implicit second person perspective
     - Use Oxford commas
     - NO em dashes
