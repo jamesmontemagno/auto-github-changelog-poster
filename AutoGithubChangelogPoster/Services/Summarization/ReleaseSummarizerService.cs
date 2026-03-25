@@ -23,6 +23,30 @@ public class ReleaseSummarizerService
         @"(?:by\s+@\S+\s*(?:in\s+)?)?(?:https?://\S+/pull/\d+|#\d+)\s*",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // Matches common prompt-injection phrases that could hijack model behaviour.
+    private static readonly Regex PromptInjectionPattern = new(
+        @"ignore\s+(previous|prior|all)\s+(instructions?|rules?|directives?|prompts?|constraints?)|" +
+        @"disregard\s+(previous|prior|all)\s+(instructions?|rules?|directives?)|" +
+        @"forget\s+(everything|all\s*(?:previous|prior)?|previous|prior)(\s+instructions?)?|" +
+        @"you\s+are\s+now\s+(?:a\s+|an\s+)?|" +
+        @"new\s+instructions?\s*[:\-]|" +
+        @"<\s*/?(?:system|instruction|prompt)\s*>|" +
+        @"\[/?(?:INST|SYS|SYSTEM|OVERRIDE)\]|" +
+        @"pretend\s+(?:you\s+are|to\s+be)\s+|" +
+        @"act\s+as\s+(?:a\s+|an\s+)?(?:different|new|another|uncensored|jailbroken)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // Matches content that must never appear in AI output destined for social posting.
+    private static readonly Regex UnsafeOutputPattern = new(
+        @"https?://\S+|" +
+        @"(?<!\w)@[A-Za-z0-9](?:[A-Za-z0-9\-]*[A-Za-z0-9])?|" +
+        @"(?<!\w)#[A-Za-z][A-Za-z0-9_]*|" +
+        @"\bsystem\s+prompt\b|" +
+        @"\bignore\s+(previous|prior|all)\s+(instructions?|rules?)\b|" +
+        @"\bas\s+an?\s+(AI|language\s+model|LLM)\b|" +
+        @"\bmy\s+(instructions?|guidelines?|rules?|constraints?|system\s+prompt)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     public ReleaseSummarizerService(
         ILogger<ReleaseSummarizerService> logger,
         string endpoint,
@@ -61,7 +85,10 @@ public class ReleaseSummarizerService
         const int maxRetries = 3;
         var cleaned = PrepareContentForAi($"{summaryText}\n\n{releaseContent}");
         var labelText = labels.Count > 0 ? string.Join(", ", labels) : "none";
-        var prompt = ReleaseSummarizerPrompts.BuildChangelogPlanUserPrompt(releaseTitle, summaryText, cleaned, labelText, premiumMode, isWeekly);
+        var sanitizedTitle = SanitizeInputField(releaseTitle);
+        var sanitizedSummary = SanitizeInputField(summaryText);
+        var sanitizedLabelText = SanitizeInputField(labelText);
+        var prompt = ReleaseSummarizerPrompts.BuildChangelogPlanUserPrompt(sanitizedTitle, sanitizedSummary, cleaned, sanitizedLabelText, premiumMode, isWeekly);
 
         var messages = new List<ChatMessage>
         {
@@ -122,6 +149,22 @@ public class ReleaseSummarizerService
 
                 if (plan.TopThingsToKnow.Count == 0 && plan.Paragraphs.Count == 0)
                 {
+                    if (attempt < maxRetries)
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(attempt * 2), cancellationToken);
+                        continue;
+                    }
+
+                    return null;
+                }
+
+                var allPlanText = string.Join(" ", plan.TopThingsToKnow.Concat(plan.Paragraphs));
+                if (!IsValidAiOutput(allPlanText))
+                {
+                    _logger.LogWarning(
+                        "AI plan output for {Title} failed safety validation (attempt {Attempt}/{MaxRetries}).",
+                        releaseTitle, attempt, maxRetries);
+
                     if (attempt < maxRetries)
                     {
                         await Task.Delay(TimeSpan.FromSeconds(attempt * 2), cancellationToken);
@@ -202,7 +245,8 @@ public class ReleaseSummarizerService
     {
         const int maxRetries = 3;
         var cleaned = PrepareContentForAi(releaseContent);
-        var prompt = ReleaseSummarizerPrompts.BuildSinglePostUserPrompt(releaseTitle, cleaned, maxLength);
+        var sanitizedTitle = SanitizeInputField(releaseTitle);
+        var prompt = ReleaseSummarizerPrompts.BuildSinglePostUserPrompt(sanitizedTitle, cleaned, maxLength);
 
         var messages = new List<ChatMessage>
         {
@@ -225,6 +269,21 @@ public class ReleaseSummarizerService
 
                 if (string.IsNullOrWhiteSpace(summary))
                 {
+                    if (attempt < maxRetries)
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(attempt * 2), cancellationToken);
+                        continue;
+                    }
+
+                    return null;
+                }
+
+                if (!IsValidAiOutput(summary))
+                {
+                    _logger.LogWarning(
+                        "Single-post AI output for {Title} failed safety validation (attempt {Attempt}/{MaxRetries}).",
+                        releaseTitle, attempt, maxRetries);
+
                     if (attempt < maxRetries)
                     {
                         await Task.Delay(TimeSpan.FromSeconds(attempt * 2), cancellationToken);
@@ -315,6 +374,7 @@ public class ReleaseSummarizerService
         var cleaned = HtmlTagPattern.Replace(decoded, " ");
         cleaned = ContributorLinePattern.Replace(cleaned, " ");
         cleaned = WhitespacePattern.Replace(cleaned, " ").Trim();
+        cleaned = PromptInjectionPattern.Replace(cleaned, "[filtered]");
 
         if (cleaned.Length > MaxAiContentLength)
         {
@@ -322,6 +382,35 @@ public class ReleaseSummarizerService
         }
 
         return cleaned;
+    }
+
+    /// <summary>
+    /// Flattens a short input field to a single line and strips prompt injection patterns.
+    /// Use this for fields that are embedded directly into the prompt (title, labels, summary).
+    /// </summary>
+    private static string SanitizeInputField(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var singleLine = WhitespacePattern.Replace(value.Replace('\r', ' ').Replace('\n', ' '), " ");
+        return PromptInjectionPattern.Replace(singleLine, "[filtered]").Trim();
+    }
+
+    /// <summary>
+    /// Returns true when the AI output contains only safe, expected content.
+    /// Rejects text with URLs, @-handles, hashtags, or indicators of prompt hijacking.
+    /// </summary>
+    private static bool IsValidAiOutput(string output)
+    {
+        if (string.IsNullOrWhiteSpace(output))
+        {
+            return false;
+        }
+
+        return !UnsafeOutputPattern.IsMatch(output);
     }
 
     private static string StripCodeFences(string text)
