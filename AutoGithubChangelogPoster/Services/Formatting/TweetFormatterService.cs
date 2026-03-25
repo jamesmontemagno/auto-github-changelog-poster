@@ -205,13 +205,13 @@ public partial class TweetFormatterService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to generate GitHub changelog single post AI summary for {Title}. Aborting without fallback.", entry.Title);
-                throw;
+                _logger.LogWarning(ex, "Failed to generate GitHub changelog single post AI summary for {Title}. Using deterministic fallback.", entry.Title);
+                summary = string.Empty;
             }
 
             if (string.IsNullOrWhiteSpace(summary))
             {
-                throw new InvalidOperationException($"AI single-post summary was empty for {entry.Title}. Aborting without fallback.");
+                _logger.LogWarning("AI single-post summary was empty for {Title}. Using deterministic fallback.", entry.Title);
             }
         }
         else
@@ -264,12 +264,11 @@ public partial class TweetFormatterService
                     return plan;
                 }
 
-                throw new InvalidOperationException($"AI summary plan was empty for {entry.Title}. Aborting without fallback.");
+                _logger.LogWarning("AI summary plan returned null for {Title}. Using deterministic fallback.", entry.Title);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to generate GitHub changelog AI summary for {Title}. Aborting without fallback.", entry.Title);
-                throw;
+                _logger.LogWarning(ex, "AI summarization failed for {Title}. Using deterministic fallback.", entry.Title);
             }
         }
 
@@ -359,40 +358,21 @@ public partial class TweetFormatterService
     private static string BuildAiPayload(ChangelogEntry entry)
     {
         var sb = new StringBuilder();
-        sb.AppendLine($"Title: {entry.Title}");
-        sb.AppendLine($"Link: {entry.Link}");
-        sb.AppendLine($"Updated: {entry.Updated:O}");
         sb.AppendLine($"Changelog Type: {entry.ChangelogType}");
         sb.AppendLine($"Labels: {(entry.Labels.Count > 0 ? string.Join(", ", entry.Labels) : "none")}");
-
-        if (entry.Media.Count > 0)
-        {
-            sb.AppendLine("Media:");
-            foreach (var media in entry.Media)
-            {
-                sb.AppendLine($"- {media.MediaType}: {media.Url}");
-            }
-        }
 
         if (!string.IsNullOrWhiteSpace(entry.SummaryText))
         {
             sb.AppendLine();
-            sb.AppendLine("Summary Text:");
+            sb.AppendLine("Summary:");
             sb.AppendLine(entry.SummaryText);
         }
 
         if (!string.IsNullOrWhiteSpace(entry.ContentText))
         {
             sb.AppendLine();
-            sb.AppendLine("Content Text:");
+            sb.AppendLine("Content:");
             sb.AppendLine(entry.ContentText);
-        }
-
-        if (!string.IsNullOrWhiteSpace(entry.ContentHtml))
-        {
-            sb.AppendLine();
-            sb.AppendLine("Content HTML:");
-            sb.AppendLine(entry.ContentHtml);
         }
 
         return sb.ToString().Trim();
