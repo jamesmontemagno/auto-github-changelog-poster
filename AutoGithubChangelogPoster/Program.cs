@@ -25,6 +25,7 @@ var host = new HostBuilder()
 		services.AddSingleton<FeedService>();
 		services.AddSingleton<OAuth1Helper>();
 		services.AddSingleton<TwitterApiClient>();
+		services.AddSingleton<MastodonApiClient>();
 		services.AddSingleton<TweetFormatterService>();
 		services.AddSingleton<StateTrackingService>();
 	})

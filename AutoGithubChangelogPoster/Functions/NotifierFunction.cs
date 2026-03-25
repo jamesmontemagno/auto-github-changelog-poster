@@ -19,6 +19,7 @@ public class NotifierFunction
     private readonly ILogger<NotifierFunction> _logger;
     private readonly FeedService _feedService;
     private readonly TwitterApiClient _twitterApiClient;
+    private readonly MastodonApiClient _mastodonApiClient;
     private readonly TweetFormatterService _tweetFormatterService;
     private readonly StateTrackingService _stateTrackingService;
 
@@ -26,12 +27,14 @@ public class NotifierFunction
         ILogger<NotifierFunction> logger,
         FeedService feedService,
         TwitterApiClient twitterApiClient,
+        MastodonApiClient mastodonApiClient,
         TweetFormatterService tweetFormatterService,
         StateTrackingService stateTrackingService)
     {
         _logger = logger;
         _feedService = feedService;
         _twitterApiClient = twitterApiClient;
+        _mastodonApiClient = mastodonApiClient;
         _tweetFormatterService = tweetFormatterService;
         _stateTrackingService = stateTrackingService;
     }
@@ -41,10 +44,20 @@ public class NotifierFunction
     {
         _logger.LogInformation("Notifier started at: {Time}", DateTime.UtcNow);
 
+        if (!_twitterApiClient.IsConfigured && !_mastodonApiClient.IsConfigured)
+        {
+            _logger.LogWarning("Neither X nor Mastodon credentials are configured. Skipping.");
+            return;
+        }
+
         if (!_twitterApiClient.IsConfigured)
         {
-            _logger.LogWarning("GitHub changelog Twitter credentials are not configured. Skipping.");
-            return;
+            _logger.LogInformation("X credentials are not configured. Posting to Mastodon only.");
+        }
+
+        if (!_mastodonApiClient.IsConfigured)
+        {
+            _logger.LogInformation("Mastodon credentials are not configured. Posting to X only.");
         }
 
         try
@@ -77,19 +90,25 @@ public class NotifierFunction
                 {
                     var post = await _tweetFormatterService.FormatPremiumPostForXAsync(entry, useAi: true);
                     LogPremiumPost(entry, post);
-                    success = await _twitterApiClient.PostTweetAsync(post);
+                    var xSuccess = _twitterApiClient.IsConfigured && await _twitterApiClient.PostTweetAsync(post);
+                    var mastodonSuccess = _mastodonApiClient.IsConfigured && await _mastodonApiClient.PostAsync(post);
+                    success = xSuccess || mastodonSuccess;
                 }
                 else if (postingMode == PostingMode.Single)
                 {
                     var post = await _tweetFormatterService.FormatSinglePostForXAsync(entry, useAi: true);
                     LogSinglePost(entry, post);
-                    success = await _twitterApiClient.PostTweetAsync(post);
+                    var xSuccess = _twitterApiClient.IsConfigured && await _twitterApiClient.PostTweetAsync(post);
+                    var mastodonSuccess = _mastodonApiClient.IsConfigured && await _mastodonApiClient.PostAsync(post);
+                    success = xSuccess || mastodonSuccess;
                 }
                 else
                 {
                     var thread = await _tweetFormatterService.FormatThreadForXAsync(entry, useAi: true);
                     LogThread(entry, thread);
-                    success = await _twitterApiClient.PostTweetThreadAsync(thread);
+                    var xSuccess = _twitterApiClient.IsConfigured && await _twitterApiClient.PostTweetThreadAsync(thread);
+                    var mastodonSuccess = _mastodonApiClient.IsConfigured && await _mastodonApiClient.PostThreadAsync(thread);
+                    success = xSuccess || mastodonSuccess;
                 }
 
                 if (success)

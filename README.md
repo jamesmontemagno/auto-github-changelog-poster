@@ -46,18 +46,23 @@ The endpoint returns plain-text preview output with entry metadata and computed 
 - `AZURE_STORAGE_CONNECTION_STRING`
 - `STATE_CONTAINER_NAME`
 
+> **Note:** X (Twitter) and Mastodon credentials are each optional — configure one or both. The notifier skips only when neither platform is configured.
+
 ## Environment variable lookup path
 - Runtime lookup is direct via `Environment.GetEnvironmentVariable(...)`.
 - Local development (`AutoGithubChangelogPoster/local.settings.json`): put keys under `Values` (for example: `Values.TWITTER_API_KEY`).
 - Azure Function App: add each key as a top-level Application Setting with the exact same name.
 - The app currently reads the `TWITTER_` OAuth key names listed above.
 - If you were using `TWITTER_GITHUB_CHANGELOG_*` names, rename them to `TWITTER_*` so credentials are detected.
+- For Mastodon, set `MASTODON_INSTANCE_URL` (e.g. `https://mastodon.social`) and `MASTODON_ACCESS_TOKEN`.
 
 ## Host/runtime settings
 - `AzureWebJobsStorage`: Azure Functions host storage setting (required by the Functions runtime).
 - `FUNCTIONS_WORKER_RUNTIME`: set to `dotnet-isolated`.
 
 ## Optional settings
+- `MASTODON_INSTANCE_URL` (e.g. `https://mastodon.social`)
+- `MASTODON_ACCESS_TOKEN`
 - `ENABLE_AI_SUMMARIES`
 - `AI_ENDPOINT`
 - `AI_API_KEY`
