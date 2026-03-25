@@ -10,7 +10,7 @@ Posting-only Azure Functions app for GitHub Changelog updates to X.
 - `AutoGithubChangelogPoster/` - function app source
 
 ## Local run
-1. Fill in `AutoGithubChangelogPoster/local.settings.json` credentials.
+1. Copy `AutoGithubChangelogPoster/local.settings.json.sample` to `AutoGithubChangelogPoster/local.settings.json` and fill in your credentials. The file is git-ignored and will not be committed.
 2. Build:
    - `dotnet build g:\auto-github-changelog-poster\auto-github-changelog-poster.slnx`
 3. Run (from project folder):
@@ -48,7 +48,7 @@ The endpoint returns plain-text preview output with entry metadata and computed 
 
 ## Environment variable lookup path
 - Runtime lookup is direct via `Environment.GetEnvironmentVariable(...)`.
-- Local development (`AutoGithubChangelogPoster/local.settings.json`): put keys under `Values` (for example: `Values.TWITTER_API_KEY`).
+- Local development (`AutoGithubChangelogPoster/local.settings.json`, git-ignored): copy from `local.settings.json.sample` and put keys under `Values` (for example: `Values.TWITTER_API_KEY`).
 - Azure Function App: add each key as a top-level Application Setting with the exact same name.
 - The app currently reads the `TWITTER_` OAuth key names listed above.
 - If you were using `TWITTER_GITHUB_CHANGELOG_*` names, rename them to `TWITTER_*` so credentials are detected.
