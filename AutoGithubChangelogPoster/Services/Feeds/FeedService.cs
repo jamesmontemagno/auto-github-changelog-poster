@@ -37,20 +37,20 @@ public partial class FeedService
         IHttpClientFactory httpClientFactory)
     {
         _logger = logger;
-        _httpClient = httpClientFactory.CreateClient();
+        _httpClient = httpClientFactory.CreateClient("feed");
     }
 
     public async Task<IReadOnlyList<ChangelogEntry>> GetEntriesAsync(CancellationToken cancellationToken = default)
     {
+        var feedUrl = Environment.GetEnvironmentVariable(FeedUrlEnvVar);
+        if (string.IsNullOrWhiteSpace(feedUrl))
+        {
+            feedUrl = FeedUrl;
+        }
+
         try
         {
-            var feedUrl = Environment.GetEnvironmentVariable(FeedUrlEnvVar);
-            if (string.IsNullOrWhiteSpace(feedUrl))
-            {
-                feedUrl = FeedUrl;
-            }
-
-            _logger.LogInformation("Fetching GitHub changelog feed");
+            _logger.LogInformation("Fetching GitHub changelog feed from {FeedUrl}", feedUrl);
 
             using var stream = await _httpClient.GetStreamAsync(feedUrl, cancellationToken);
             using var reader = XmlReader.Create(stream);
@@ -74,7 +74,7 @@ public partial class FeedService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error fetching GitHub changelog feed");
+            _logger.LogError(ex, "Failed to fetch GitHub changelog feed from {FeedUrl}", feedUrl);
             return [];
         }
     }

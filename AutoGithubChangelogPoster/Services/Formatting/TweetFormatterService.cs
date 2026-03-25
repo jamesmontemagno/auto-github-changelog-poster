@@ -193,25 +193,28 @@ public partial class TweetFormatterService
         {
             if (_releaseSummarizer == null)
             {
-                throw new InvalidOperationException("AI summaries are enabled, but ReleaseSummarizerService is not configured.");
+                _logger.LogWarning("AI summaries are enabled, but ReleaseSummarizerService is not configured. Falling back to deterministic formatting for {Title}.", entry.Title);
+                summary = string.Empty;
             }
+            else
+            {
+                try
+                {
+                    summary = await _releaseSummarizer.SummarizeSinglePostAsync(
+                        entry.Title,
+                        BuildAiPayload(entry),
+                        availableForSummary) ?? string.Empty;
 
-            try
-            {
-                summary = await _releaseSummarizer.SummarizeSinglePostAsync(
-                    entry.Title,
-                    BuildAiPayload(entry),
-                    availableForSummary) ?? string.Empty;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to generate GitHub changelog single post AI summary for {Title}. Aborting without fallback.", entry.Title);
-                throw;
-            }
-
-            if (string.IsNullOrWhiteSpace(summary))
-            {
-                throw new InvalidOperationException($"AI single-post summary was empty for {entry.Title}. Aborting without fallback.");
+                    if (string.IsNullOrWhiteSpace(summary))
+                    {
+                        _logger.LogWarning("AI single-post summary was empty for {Title}. Falling back to deterministic formatting.", entry.Title);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to generate AI summary for {Title}. Falling back to deterministic formatting.", entry.Title);
+                    summary = string.Empty;
+                }
             }
         }
         else
@@ -246,30 +249,31 @@ public partial class TweetFormatterService
         {
             if (_releaseSummarizer == null)
             {
-                throw new InvalidOperationException("AI summaries are enabled, but ReleaseSummarizerService is not configured.");
+                _logger.LogWarning("AI summaries are enabled, but ReleaseSummarizerService is not configured. Falling back to deterministic formatting for {Title}.", entry.Title);
             }
-
-            try
+            else
             {
-                var plan = await _releaseSummarizer.PlanSummaryAsync(
-                    entry.Title,
-                    BuildAiPayload(entry),
-                    entry.SummaryText,
-                    entry.Labels,
-                    premiumMode,
-                    isWeekly);
-
-                if (plan != null)
+                try
                 {
-                    return plan;
-                }
+                    var plan = await _releaseSummarizer.PlanSummaryAsync(
+                        entry.Title,
+                        BuildAiPayload(entry),
+                        entry.SummaryText,
+                        entry.Labels,
+                        premiumMode,
+                        isWeekly);
 
-                throw new InvalidOperationException($"AI summary plan was empty for {entry.Title}. Aborting without fallback.");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to generate GitHub changelog AI summary for {Title}. Aborting without fallback.", entry.Title);
-                throw;
+                    if (plan != null)
+                    {
+                        return plan;
+                    }
+
+                    _logger.LogWarning("AI summary plan was empty for {Title}. Falling back to deterministic formatting.", entry.Title);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to generate GitHub changelog AI summary for {Title}. Falling back to deterministic formatting.", entry.Title);
+                }
             }
         }
 

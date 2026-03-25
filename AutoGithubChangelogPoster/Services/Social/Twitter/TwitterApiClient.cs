@@ -26,7 +26,7 @@ public class TwitterApiClient
         OAuth1Helper oauth1Helper)
     {
         _logger = logger;
-        _httpClient = httpClientFactory.CreateClient();
+        _httpClient = httpClientFactory.CreateClient("twitter");
         _oauth1Helper = oauth1Helper;
     }
 
@@ -39,7 +39,7 @@ public class TwitterApiClient
         OAuth1Helper oauth1Helper)
     {
         _logger = logger;
-        _httpClient = httpClientFactory.CreateClient();
+        _httpClient = httpClientFactory.CreateClient("twitter");
         _oauth1Helper = oauth1Helper;
     }
 
@@ -112,13 +112,14 @@ public class TwitterApiClient
                 return tweetId;
             }
 
-            _logger.LogError("Failed to post tweet. Status: {StatusCode}, Response: {Response}",
+            _logger.LogError("Failed to post to X API. Status: {StatusCode}, Response: {Response}",
                 response.StatusCode, responseContent);
             return null;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error posting tweet");
+            _logger.LogError(ex, "Error posting to X API for post: {TweetPreview}",
+                post.Text.Length > 50 ? post.Text[..50] : post.Text);
             return null;
         }
     }

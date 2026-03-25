@@ -52,7 +52,7 @@ public class NotifierFunction
             var entries = await _feedService.GetEntriesAsync();
             if (entries.Count == 0)
             {
-                _logger.LogInformation("No GitHub changelog entries found.");
+                _logger.LogWarning("GitHub changelog feed returned no entries. The feed may be unavailable or empty.");
                 return;
             }
 
@@ -62,7 +62,8 @@ public class NotifierFunction
             var newEntries = GetNewEntries(entries, state);
             if (newEntries.Count == 0)
             {
-                _logger.LogInformation("No new GitHub changelog entries to process.");
+                _logger.LogInformation("No new GitHub changelog entries since last run (last processed ID: {LastProcessedId}).",
+                    state?.LastProcessedId ?? "none");
                 return;
             }
 
