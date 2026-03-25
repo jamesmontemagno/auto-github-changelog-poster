@@ -10,9 +10,13 @@ public class TwitterApiClient
     private const string TwitterApiUrl = "https://api.x.com/2/tweets";
     private const string MediaUploadUrl = "https://upload.twitter.com/1.1/media/upload.json";
     private const int MediaUploadChunkSize = 4 * 1024 * 1024;
+    // 80 KiB read buffer — large enough for efficient streaming, small enough to keep peak
+    // memory low when the hard download cap is enforced chunk-by-chunk.
+    private const int StreamReadBufferSize = 81920;
 
     private readonly ILogger _logger;
     private readonly HttpClient _httpClient;
+    private readonly HttpClient _mediaHttpClient;
     private readonly OAuth1Helper _oauth1Helper;
 
     /// <summary>
@@ -27,6 +31,7 @@ public class TwitterApiClient
     {
         _logger = logger;
         _httpClient = httpClientFactory.CreateClient();
+        _mediaHttpClient = httpClientFactory.CreateClient("MediaDownload");
         _oauth1Helper = oauth1Helper;
     }
 
@@ -40,6 +45,7 @@ public class TwitterApiClient
     {
         _logger = logger;
         _httpClient = httpClientFactory.CreateClient();
+        _mediaHttpClient = httpClientFactory.CreateClient("MediaDownload");
         _oauth1Helper = oauth1Helper;
     }
 
@@ -183,7 +189,14 @@ public class TwitterApiClient
 
     private async Task<string?> UploadSingleMediaAsync(string mediaUrl)
     {
-        using var mediaResponse = await _httpClient.GetAsync(mediaUrl);
+        // Validate URL scheme before making any network request.
+        if (!Uri.TryCreate(mediaUrl, UriKind.Absolute, out var uri) || !MediaSsrfGuard.IsAllowedScheme(uri))
+        {
+            _logger.LogWarning("Media URL '{MediaUrl}' uses a disallowed scheme. Skipping.", mediaUrl);
+            return null;
+        }
+
+        using var mediaResponse = await _mediaHttpClient.GetAsync(mediaUrl, HttpCompletionOption.ResponseHeadersRead);
         if (!mediaResponse.IsSuccessStatusCode)
         {
             _logger.LogWarning("Failed to download media from {MediaUrl}. Status: {StatusCode}",
@@ -191,15 +204,56 @@ public class TwitterApiClient
             return null;
         }
 
-        var bytes = await mediaResponse.Content.ReadAsByteArrayAsync();
+        // Reject unsupported content types before buffering the body.
+        var contentType = mediaResponse.Content.Headers.ContentType?.MediaType
+            ?? GuessMediaTypeFromUrl(mediaUrl);
+
+        if (!MediaSsrfGuard.IsAllowedMediaType(contentType))
+        {
+            _logger.LogWarning("Media URL '{MediaUrl}' returned unsupported content-type '{ContentType}'. Skipping.",
+                mediaUrl, contentType);
+            return null;
+        }
+
+        // Reject responses that advertise a body larger than the cap.
+        var declaredLength = mediaResponse.Content.Headers.ContentLength;
+        if (declaredLength.HasValue && declaredLength.Value > MediaSsrfGuard.MaxDownloadBytes)
+        {
+            _logger.LogWarning(
+                "Media URL '{MediaUrl}' Content-Length {Length} exceeds the {Max}-byte cap. Skipping.",
+                mediaUrl, declaredLength.Value, MediaSsrfGuard.MaxDownloadBytes);
+            return null;
+        }
+
+        // Stream the body with a hard size cap to guard against responses that
+        // omit Content-Length or lie about it.
+        byte[] bytes;
+        using (var responseStream = await mediaResponse.Content.ReadAsStreamAsync())
+        using (var limited = new MemoryStream())
+        {
+            var buffer = new byte[StreamReadBufferSize];
+            int read;
+            while ((read = await responseStream.ReadAsync(buffer.AsMemory())) > 0)
+            {
+                if (limited.Length + read > MediaSsrfGuard.MaxDownloadBytes)
+                {
+                    _logger.LogWarning(
+                        "Media download from '{MediaUrl}' exceeded the {Max}-byte cap. Skipping.",
+                        mediaUrl, MediaSsrfGuard.MaxDownloadBytes);
+                    return null;
+                }
+
+                limited.Write(buffer, 0, read);
+            }
+
+            bytes = limited.ToArray();
+        }
+
         if (bytes.Length == 0)
         {
             _logger.LogWarning("Downloaded media from {MediaUrl} was empty.", mediaUrl);
             return null;
         }
-
-        var contentType = mediaResponse.Content.Headers.ContentType?.MediaType
-            ?? GuessMediaTypeFromUrl(mediaUrl);
 
         if (contentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
         {

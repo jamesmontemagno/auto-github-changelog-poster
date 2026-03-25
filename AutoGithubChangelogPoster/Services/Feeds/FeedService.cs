@@ -164,7 +164,7 @@ public partial class FeedService
         foreach (Match match in VideoSourcePattern().Matches(html))
         {
             var url = match.Groups[1].Value;
-            if (Uri.TryCreate(url, UriKind.Absolute, out _))
+            if (Uri.TryCreate(url, UriKind.Absolute, out var uri) && MediaSsrfGuard.IsAllowedScheme(uri))
             {
                 media.Add(new ChangelogMediaItem(url, ChangelogMediaType.Video));
             }
@@ -173,7 +173,7 @@ public partial class FeedService
         foreach (Match match in VideoPattern().Matches(html))
         {
             var url = match.Groups[1].Value;
-            if (Uri.TryCreate(url, UriKind.Absolute, out _))
+            if (Uri.TryCreate(url, UriKind.Absolute, out var uri) && MediaSsrfGuard.IsAllowedScheme(uri))
             {
                 media.Add(new ChangelogMediaItem(url, ChangelogMediaType.Video));
             }
@@ -182,7 +182,8 @@ public partial class FeedService
         foreach (Match match in ImagePattern().Matches(html))
         {
             var url = match.Groups[1].Value;
-            if (Uri.TryCreate(url, UriKind.Absolute, out _) &&
+            if (Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
+                MediaSsrfGuard.IsAllowedScheme(uri) &&
                 !url.Contains("favicon", StringComparison.OrdinalIgnoreCase) &&
                 !url.Contains("emoji", StringComparison.OrdinalIgnoreCase))
             {
