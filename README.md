@@ -38,6 +38,8 @@ Posting-only Azure Functions app for GitHub Changelog updates to X.
 
 The endpoint returns plain-text preview output with entry metadata and computed post length details. It does not publish to X.
 
+Generated preview and published post text is normalized to keep only the main GitHub changelog entry URL appended by the formatter. URLs from generated summaries, changelog content, markdown/HTML links, and bare domains are removed from visible post text; media attachment URLs are still used only for media upload.
+
 ## Required settings
 - `TWITTER_API_KEY`
 - `TWITTER_API_SECRET`

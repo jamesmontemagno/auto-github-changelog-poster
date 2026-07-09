@@ -9,7 +9,7 @@ namespace AutoGithubChangelogPoster.Services;
 public partial class TweetFormatterService
 {
     private readonly ILogger<TweetFormatterService> _logger;
-    private readonly ReleaseSummarizerService? _releaseSummarizer;
+    private readonly IReleaseSummarizerService? _releaseSummarizer;
 
     private const int MaxTweetLength = 280;
     private const int MaxPremiumTweetLength = 25000;
@@ -18,12 +18,16 @@ public partial class TweetFormatterService
     private static readonly Regex ListItemPattern = new(@"<li[^>]*>(.*?)</li>", RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled);
     private static readonly Regex CodeTagPattern = new(@"</?code[^>]*>", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex MarkdownLinkPattern = new(@"\[([^\]]+)\]\([^\)]+\)", RegexOptions.Compiled);
+    private static readonly Regex EmptyMarkdownLinkPattern = new(@"\[\s*\]\([^\)]+\)", RegexOptions.Compiled);
+    private static readonly Regex UrlPattern = new(@"https?://[^\s<>()\]]+", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex RawDomainPattern = new(@"(?<![@\w/])(?:www\.)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?:/[^\s<>()\]]*)?", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex HtmlTagPattern = new(@"<[^>]+>", RegexOptions.Compiled);
     private static readonly Regex WhitespacePattern = new(@"\s+", RegexOptions.Compiled);
     private static readonly Regex BulletPrefixPattern = new(@"^\s*[-*•]+\s*", RegexOptions.Compiled);
     private static readonly Regex LeadingPunctuationPattern = new(@"^[\p{P}\s]+", RegexOptions.Compiled);
+    private static readonly Regex SpaceBeforePunctuationPattern = new(@"\s+([,.;:!?])", RegexOptions.Compiled);
 
-    public TweetFormatterService(ILogger<TweetFormatterService> logger, ReleaseSummarizerService? releaseSummarizer = null)
+    public TweetFormatterService(ILogger<TweetFormatterService> logger, IReleaseSummarizerService? releaseSummarizer = null)
     {
         _logger = logger;
         _releaseSummarizer = releaseSummarizer;
@@ -83,10 +87,10 @@ public partial class TweetFormatterService
         }
 
         var cleaned = HttpUtility.HtmlDecode(text);
-        cleaned = MarkdownLinkPattern.Replace(cleaned, "$1");
+        cleaned = SanitizeGeneratedText(cleaned);
         cleaned = CodeTagPattern.Replace(cleaned, string.Empty);
         cleaned = HtmlTagPattern.Replace(cleaned, " ");
-        cleaned = WhitespacePattern.Replace(cleaned, " ").Trim();
+        cleaned = SanitizeGeneratedText(cleaned);
         cleaned = BulletPrefixPattern.Replace(cleaned, string.Empty);
         cleaned = LeadingPunctuationPattern.Replace(cleaned, string.Empty).Trim();
 
@@ -153,7 +157,7 @@ public partial class TweetFormatterService
             MaxTweetLength);
 
         var preferredMedia = SelectPreferredMedia(entry);
-        return posts
+        return EnsureCanonicalUrlInvariant(posts, entry.Link, MaxTweetLength)
             .Select((text, index) => index == 0
                 ? new SocialMediaPost(text, preferredMedia)
                 : new SocialMediaPost(text))
@@ -175,7 +179,7 @@ public partial class TweetFormatterService
             plan.TopThingsToKnow,
             premiumContent.RemainingParagraphs);
 
-        return new SocialMediaPost(text);
+        return new SocialMediaPost(EnsureCanonicalUrlInvariant(text, entry.Link, MaxPremiumTweetLength));
     }
 
     public async Task<SocialMediaPost> FormatSinglePostForXAsync(
@@ -224,15 +228,15 @@ public partial class TweetFormatterService
             summary = BuildSinglePostFallback(entry, availableForSummary);
         }
 
-        summary = SinglePostSummaryNormalizer.Normalize(summary, availableForSummary);
+        summary = SinglePostSummaryNormalizer.Normalize(SanitizeGeneratedText(summary), availableForSummary);
         var text = $"{summary}\n\n{entry.Link}";
         if (!XPostLengthHelper.FitsWithinLimit(text, SinglePostMaxLength))
         {
-            summary = SinglePostSummaryNormalizer.Normalize(summary, Math.Max(0, availableForSummary - 1));
+            summary = SinglePostSummaryNormalizer.Normalize(SanitizeGeneratedText(summary), Math.Max(0, availableForSummary - 1));
             text = $"{summary}\n\n{entry.Link}";
         }
 
-        return new SocialMediaPost(text);
+        return new SocialMediaPost(EnsureCanonicalUrlInvariant(text, entry.Link, SinglePostMaxLength));
     }
 
     private async Task<ChangelogSummaryPlan> BuildSummaryPlanAsync(
@@ -261,7 +265,7 @@ public partial class TweetFormatterService
 
                 if (plan != null)
                 {
-                    return plan;
+                    return SanitizeSummaryPlan(plan);
                 }
 
                 throw new InvalidOperationException($"AI summary plan was empty for {entry.Title}. Aborting without fallback.");
@@ -273,7 +277,7 @@ public partial class TweetFormatterService
             }
         }
 
-        return BuildFallbackChangelogPlan(entry.Title, entry.SummaryText, entry.ContentHtml, entry.Labels, premiumMode, isWeekly);
+        return SanitizeSummaryPlan(BuildFallbackChangelogPlan(entry.Title, entry.SummaryText, entry.ContentHtml, entry.Labels, premiumMode, isWeekly));
     }
 
     private static ChangelogSummaryPlan BuildFallbackChangelogPlan(
@@ -286,6 +290,7 @@ public partial class TweetFormatterService
     {
         var features = ExtractFeatureList(contentHtml)
             .Select(StripLeadingDecoration)
+            .Select(SanitizeGeneratedText)
             .Where(item => !string.IsNullOrWhiteSpace(item))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Take(5)
@@ -294,13 +299,14 @@ public partial class TweetFormatterService
         if (features.Count == 0 && !string.IsNullOrWhiteSpace(summaryText))
         {
             features = SplitIntoSentences(summaryText)
+                .Select(SanitizeGeneratedText)
                 .Select(TruncateSentence)
                 .Take(4)
                 .ToList();
         }
 
         var paragraphs = new List<string>();
-        var cleanSummary = CollapseWhitespace(summaryText);
+        var cleanSummary = SanitizeGeneratedText(summaryText);
         if (!string.IsNullOrWhiteSpace(cleanSummary))
         {
             paragraphs.Add(TruncateParagraph(cleanSummary, premiumMode ? PremiumParagraphMaxLength : ThreadParagraphMaxLength));
@@ -345,7 +351,7 @@ public partial class TweetFormatterService
         var plan = BuildFallbackChangelogPlan(entry.Title, entry.SummaryText, entry.ContentHtml, entry.Labels, premiumMode: false, isWeekly: false);
         var content = SplitSummaryContent(plan.Paragraphs, plan.TopThingsToKnow, "GitHub shipped a new changelog update.");
         var bulletLines = plan.TopThingsToKnow
-            .Select(item => $"• {StripLeadingDecoration(CollapseWhitespace(item))}")
+            .Select(item => $"• {StripLeadingDecoration(SanitizeGeneratedText(item))}")
             .Where(item => !string.IsNullOrWhiteSpace(item))
             .Take(4)
             .ToList();
@@ -353,7 +359,7 @@ public partial class TweetFormatterService
         var summary = bulletLines.Count == 0
             ? content.SummarySentence
             : $"{content.SummarySentence}\n\n{string.Join("\n", bulletLines)}";
-        return SinglePostSummaryNormalizer.Normalize(summary, maxLength);
+        return SinglePostSummaryNormalizer.Normalize(SanitizeGeneratedText(summary), maxLength);
     }
 
     private static string BuildAiPayload(ChangelogEntry entry)
@@ -429,7 +435,7 @@ public partial class TweetFormatterService
 
         var summaryBlock = string.IsNullOrWhiteSpace(summarySentence)
             ? string.Empty
-            : CollapseWhitespace(summarySentence);
+            : SanitizeGeneratedText(summarySentence);
         var highlightBlock = highlights.Count > 0 ? string.Join("\n", highlights) : string.Empty;
         var firstPost = string.IsNullOrEmpty(summaryBlock)
             ? (string.IsNullOrEmpty(highlightBlock)
@@ -493,12 +499,12 @@ public partial class TweetFormatterService
         var sections = new List<string>();
         if (!string.IsNullOrWhiteSpace(header))
         {
-            sections.Add(CollapseWhitespace(header));
+            sections.Add(SanitizeGeneratedText(header));
         }
 
         var summaryBlock = string.IsNullOrWhiteSpace(summarySentence)
             ? null
-            : CollapseWhitespace(summarySentence);
+            : SanitizeGeneratedText(summarySentence);
         if (!string.IsNullOrWhiteSpace(summaryBlock))
         {
             sections.Add(summaryBlock);
@@ -506,12 +512,12 @@ public partial class TweetFormatterService
 
         if (highlights.Count > 0)
         {
-            sections.Add(string.Join("\n", highlights.Where(item => !string.IsNullOrWhiteSpace(item))));
+            sections.Add(string.Join("\n", highlights.Select(SanitizeGeneratedText).Where(item => !string.IsNullOrWhiteSpace(item))));
         }
 
         if (followUpPosts.Count > 0)
         {
-            sections.Add(string.Join("\n\n", followUpPosts.Where(post => !string.IsNullOrWhiteSpace(post))));
+            sections.Add(string.Join("\n\n", followUpPosts.Select(SanitizeGeneratedText).Where(post => !string.IsNullOrWhiteSpace(post))));
         }
 
         if (!string.IsNullOrWhiteSpace(link))
@@ -579,7 +585,7 @@ public partial class TweetFormatterService
 
         foreach (var paragraph in paragraphs)
         {
-            var cleanParagraph = CollapseWhitespace(paragraph);
+            var cleanParagraph = SanitizeGeneratedText(paragraph);
             if (string.IsNullOrWhiteSpace(cleanParagraph))
             {
                 continue;
@@ -642,7 +648,7 @@ public partial class TweetFormatterService
 
         if (!string.IsNullOrWhiteSpace(summarySentence))
         {
-            sb.AppendLine(CollapseWhitespace(summarySentence));
+            sb.AppendLine(SanitizeGeneratedText(summarySentence));
             sb.AppendLine();
         }
 
@@ -658,7 +664,7 @@ public partial class TweetFormatterService
             sb.AppendLine();
             foreach (var paragraph in paragraphs)
             {
-                sb.AppendLine(CollapseWhitespace(paragraph));
+                sb.AppendLine(SanitizeGeneratedText(paragraph));
                 sb.AppendLine();
             }
         }
@@ -712,7 +718,7 @@ public partial class TweetFormatterService
     }
 
     private static string SanitizeBullet(string text)
-        => TruncateForDisplay(StripLeadingDecoration(CollapseWhitespace(text)), 72);
+        => TruncateForDisplay(StripLeadingDecoration(SanitizeGeneratedText(text)), 72);
 
     private static (string SummarySentence, IReadOnlyList<string> RemainingParagraphs) SplitSummaryContent(
         IReadOnlyList<string> paragraphs,
@@ -723,7 +729,7 @@ public partial class TweetFormatterService
 
         foreach (var paragraph in paragraphs)
         {
-            var cleanParagraph = CollapseWhitespace(paragraph);
+            var cleanParagraph = SanitizeGeneratedText(paragraph);
             if (string.IsNullOrWhiteSpace(cleanParagraph))
             {
                 continue;
@@ -738,14 +744,14 @@ public partial class TweetFormatterService
             var summarySentence = EnsureSentence(sentences[0]);
             if (sentences.Count > 1)
             {
-                remainingParagraphs.Add(string.Join(" ", sentences.Skip(1)));
+                remainingParagraphs.Add(SanitizeGeneratedText(string.Join(" ", sentences.Skip(1))));
             }
 
             remainingParagraphs.AddRange(
                 paragraphs
                     .SkipWhile(item => !ReferenceEquals(item, paragraph))
                     .Skip(1)
-                    .Select(CollapseWhitespace)
+                    .Select(SanitizeGeneratedText)
                     .Where(item => !string.IsNullOrWhiteSpace(item)));
 
             return (summarySentence, remainingParagraphs);
@@ -766,14 +772,14 @@ public partial class TweetFormatterService
 
     private static List<string> SplitIntoSentences(string text)
         => SentenceSplitPattern()
-            .Split(CollapseWhitespace(text))
+            .Split(SanitizeGeneratedText(text))
             .Select(sentence => sentence.Trim())
             .Where(sentence => !string.IsNullOrWhiteSpace(sentence))
             .ToList();
 
     private static string TruncateParagraph(string text, int maxLength)
     {
-        var clean = CollapseWhitespace(text);
+        var clean = SanitizeGeneratedText(text);
         if (XPostLengthHelper.FitsWithinLimit(clean, maxLength))
         {
             return clean;
@@ -783,11 +789,11 @@ public partial class TweetFormatterService
     }
 
     private static string TruncateSentence(string text)
-        => TruncateForDisplay(CollapseWhitespace(text), 72);
+        => TruncateForDisplay(SanitizeGeneratedText(text), 72);
 
     private static string EnsureSentence(string text)
     {
-        var clean = CollapseWhitespace(text);
+        var clean = SanitizeGeneratedText(text);
         if (string.IsNullOrWhiteSpace(clean))
         {
             return string.Empty;
@@ -811,4 +817,131 @@ public partial class TweetFormatterService
     private static string CollapseWhitespace(string text)
         => string.Join(" ", text.Split(['\r', '\n', '\t'], StringSplitOptions.RemoveEmptyEntries))
             .Trim();
+
+    private static ChangelogSummaryPlan SanitizeSummaryPlan(ChangelogSummaryPlan plan)
+        => new()
+        {
+            TopThingsToKnow = plan.TopThingsToKnow
+                .Select(SanitizeGeneratedText)
+                .Where(item => !string.IsNullOrWhiteSpace(item))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(4)
+                .ToList(),
+            Paragraphs = plan.Paragraphs
+                .Select(SanitizeGeneratedText)
+                .Where(item => !string.IsNullOrWhiteSpace(item))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(2)
+                .ToList()
+        };
+
+    private static string SanitizeGeneratedText(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return string.Empty;
+        }
+
+        var clean = HttpUtility.HtmlDecode(text);
+        clean = EmptyMarkdownLinkPattern.Replace(clean, string.Empty);
+        clean = MarkdownLinkPattern.Replace(clean, "$1");
+        clean = UrlPattern.Replace(clean, string.Empty);
+        clean = RawDomainPattern.Replace(clean, string.Empty);
+        clean = HtmlTagPattern.Replace(clean, " ");
+        return CleanTextLines(clean);
+    }
+
+    private static string EnsureCanonicalUrlInvariant(string text, string canonicalLink, int maxPostLength)
+    {
+        var canonicalSeen = false;
+        var sanitized = SanitizeFinalPostText(text, canonicalLink, ref canonicalSeen);
+        if (canonicalSeen || string.IsNullOrWhiteSpace(canonicalLink))
+        {
+            return EnsurePostFits(sanitized, maxPostLength);
+        }
+
+        var candidate = string.IsNullOrWhiteSpace(sanitized)
+            ? canonicalLink
+            : $"{sanitized}\n\n{canonicalLink}";
+        return EnsurePostFits(candidate, maxPostLength);
+    }
+
+    private static IReadOnlyList<string> EnsureCanonicalUrlInvariant(
+        IReadOnlyList<string> posts,
+        string canonicalLink,
+        int maxPostLength)
+    {
+        var canonicalSeen = false;
+        var sanitizedPosts = posts
+            .Select(post => SanitizeFinalPostText(post, canonicalLink, ref canonicalSeen))
+            .Where(post => !string.IsNullOrWhiteSpace(post))
+            .ToList();
+
+        if (!canonicalSeen && !string.IsNullOrWhiteSpace(canonicalLink))
+        {
+            if (sanitizedPosts.Count == 0)
+            {
+                sanitizedPosts.Add(canonicalLink);
+            }
+            else
+            {
+                var lastIndex = sanitizedPosts.Count - 1;
+                var candidate = $"{sanitizedPosts[lastIndex]}\n\n{canonicalLink}";
+                if (XPostLengthHelper.FitsWithinLimit(candidate, maxPostLength))
+                {
+                    sanitizedPosts[lastIndex] = candidate;
+                }
+                else
+                {
+                    sanitizedPosts.Add(canonicalLink);
+                }
+            }
+        }
+
+        return sanitizedPosts.Select(post => EnsurePostFits(post, maxPostLength)).ToList();
+    }
+
+    private static string SanitizeFinalPostText(string text, string canonicalLink, ref bool canonicalSeen)
+    {
+        const string canonicalPlaceholder = " __CANONICAL_CHANGELOG_URL__ ";
+        var clean = HttpUtility.HtmlDecode(text);
+        var foundCanonical = canonicalSeen;
+        clean = UrlPattern.Replace(clean, match =>
+        {
+            if (!foundCanonical && IsCanonicalUrl(match.Value, canonicalLink))
+            {
+                foundCanonical = true;
+                return canonicalPlaceholder;
+            }
+
+            return string.Empty;
+        });
+        canonicalSeen = foundCanonical;
+        clean = RawDomainPattern.Replace(clean, string.Empty);
+        clean = clean.Replace(canonicalPlaceholder.Trim(), canonicalLink, StringComparison.Ordinal);
+        return CleanTextLines(clean);
+    }
+
+    private static bool IsCanonicalUrl(string value, string canonicalLink)
+    {
+        var candidate = value.Trim().TrimEnd('.', ',', ';', ':', '!', '?', ')', ']');
+        return string.Equals(candidate, canonicalLink, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string CleanTextLines(string text)
+    {
+        var lines = text
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n')
+            .Split('\n')
+            .Select(line =>
+            {
+                var cleanLine = WhitespacePattern.Replace(line, " ").Trim();
+                cleanLine = SpaceBeforePunctuationPattern.Replace(cleanLine, "$1");
+                return cleanLine.Trim(' ', ',', ';', ':', '-', '–', '—');
+            })
+            .Where(line => !string.IsNullOrWhiteSpace(line));
+
+        return string.Join("\n", lines).Trim();
+    }
 }
