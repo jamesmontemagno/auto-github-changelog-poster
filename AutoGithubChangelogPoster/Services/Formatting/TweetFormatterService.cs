@@ -853,9 +853,8 @@ public partial class TweetFormatterService
 
     private static string EnsureCanonicalUrlInvariant(string text, string canonicalLink, int maxPostLength)
     {
-        var canonicalSeen = false;
-        var sanitized = SanitizeFinalPostText(text, canonicalLink, ref canonicalSeen);
-        if (canonicalSeen || string.IsNullOrWhiteSpace(canonicalLink))
+        var sanitized = SanitizeFinalPostText(text);
+        if (string.IsNullOrWhiteSpace(canonicalLink))
         {
             return EnsurePostFits(sanitized, maxPostLength);
         }
@@ -871,13 +870,12 @@ public partial class TweetFormatterService
         string canonicalLink,
         int maxPostLength)
     {
-        var canonicalSeen = false;
         var sanitizedPosts = posts
-            .Select(post => SanitizeFinalPostText(post, canonicalLink, ref canonicalSeen))
+            .Select(SanitizeFinalPostText)
             .Where(post => !string.IsNullOrWhiteSpace(post))
             .ToList();
 
-        if (!canonicalSeen && !string.IsNullOrWhiteSpace(canonicalLink))
+        if (!string.IsNullOrWhiteSpace(canonicalLink))
         {
             if (sanitizedPosts.Count == 0)
             {
@@ -901,31 +899,12 @@ public partial class TweetFormatterService
         return sanitizedPosts.Select(post => EnsurePostFits(post, maxPostLength)).ToList();
     }
 
-    private static string SanitizeFinalPostText(string text, string canonicalLink, ref bool canonicalSeen)
+    private static string SanitizeFinalPostText(string text)
     {
-        const string canonicalPlaceholder = " __CANONICAL_CHANGELOG_URL__ ";
         var clean = HttpUtility.HtmlDecode(text);
-        var foundCanonical = canonicalSeen;
-        clean = UrlPattern.Replace(clean, match =>
-        {
-            if (!foundCanonical && IsCanonicalUrl(match.Value, canonicalLink))
-            {
-                foundCanonical = true;
-                return canonicalPlaceholder;
-            }
-
-            return string.Empty;
-        });
-        canonicalSeen = foundCanonical;
+        clean = UrlPattern.Replace(clean, string.Empty);
         clean = RawDomainPattern.Replace(clean, string.Empty);
-        clean = clean.Replace(canonicalPlaceholder.Trim(), canonicalLink, StringComparison.Ordinal);
         return CleanTextLines(clean);
-    }
-
-    private static bool IsCanonicalUrl(string value, string canonicalLink)
-    {
-        var candidate = value.Trim().TrimEnd('.', ',', ';', ':', '!', '?', ')', ']');
-        return string.Equals(candidate, canonicalLink, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string CleanTextLines(string text)

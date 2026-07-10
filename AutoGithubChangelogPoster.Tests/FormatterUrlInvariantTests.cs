@@ -28,6 +28,7 @@ public partial class FormatterUrlInvariantTests
         Assert.DoesNotContain("html.example", post.Text, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("<a", post.Text, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("github.blog/extra", post.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.EndsWith(CanonicalLink, post.Text);
         Assert.Empty(post.MediaUrlsOrEmpty);
     }
 
@@ -53,6 +54,7 @@ public partial class FormatterUrlInvariantTests
 
         AssertOnlyCanonicalUrl(string.Join("\n\n", thread.Select(post => post.Text)));
         Assert.DoesNotContain("example.com", string.Join("\n", thread.Select(post => post.Text)), StringComparison.OrdinalIgnoreCase);
+        Assert.EndsWith(CanonicalLink, thread[^1].Text);
         Assert.Contains(MediaUrl, thread[0].MediaUrlsOrEmpty);
     }
 
@@ -78,6 +80,7 @@ public partial class FormatterUrlInvariantTests
         AssertOnlyCanonicalUrl(post.Text);
         Assert.DoesNotContain("example.org", post.Text, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("github.blog/generated", post.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.EndsWith(CanonicalLink, post.Text);
     }
 
     private static TweetFormatterService CreateFormatter(
