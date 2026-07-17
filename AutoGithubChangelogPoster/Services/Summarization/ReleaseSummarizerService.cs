@@ -7,7 +7,25 @@ using System.Text.RegularExpressions;
 
 namespace AutoGithubChangelogPoster.Services;
 
-public class ReleaseSummarizerService
+public interface IReleaseSummarizerService
+{
+    Task<ChangelogSummaryPlan?> PlanSummaryAsync(
+        string releaseTitle,
+        string releaseContent,
+        string summaryText,
+        IReadOnlyList<string> labels,
+        bool premiumMode,
+        bool isWeekly,
+        CancellationToken cancellationToken = default);
+
+    Task<string?> SummarizeSinglePostAsync(
+        string releaseTitle,
+        string releaseContent,
+        int maxLength,
+        CancellationToken cancellationToken = default);
+}
+
+public class ReleaseSummarizerService : IReleaseSummarizerService
 {
     private const int DefaultSummaryPlanTimeoutSeconds = 60;
     private const int MaxAiContentLength = 4000;
@@ -640,7 +658,6 @@ internal static class SinglePostSummaryNormalizer
         private static string NormalizeForComparison(string value)
             => Regex.Replace(value.ToLowerInvariant(), @"[^a-z0-9]+", " ").Trim();
     }
-
 
 
 

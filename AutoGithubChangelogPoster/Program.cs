@@ -15,7 +15,7 @@ var host = new HostBuilder()
 
 		if (!string.IsNullOrWhiteSpace(aiEndpoint) && !string.IsNullOrWhiteSpace(aiApiKey))
 		{
-			services.AddSingleton(sp =>
+			services.AddSingleton<IReleaseSummarizerService>(sp =>
 			{
 				var logger = sp.GetRequiredService<ILogger<ReleaseSummarizerService>>();
 				return new ReleaseSummarizerService(logger, aiEndpoint, aiApiKey, aiModel);
