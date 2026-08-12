@@ -1,5 +1,6 @@
 using Azure;
 using Azure.AI.OpenAI;
+using Azure.Identity;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using System.Net;
@@ -61,7 +62,7 @@ public class ReleaseSummarizerService : IReleaseSummarizerService
 
         var azureClient = new AzureOpenAIClient(
             new Uri(endpoint),
-            new AzureKeyCredential(apiKey));
+            new DefaultAzureCredential());
 
         var chatClient = azureClient.GetChatClient(deploymentModel);
         return chatClient.AsIChatClient();
