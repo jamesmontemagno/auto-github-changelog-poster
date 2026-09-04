@@ -300,8 +300,8 @@ public class ReleaseSummarizerService : IReleaseSummarizerService
             catch (Exception ex)
             {
                 _logger.LogError(ex,
-                    "Error generating GitHub changelog single-post summary for {Title} (attempt {Attempt}/{MaxRetries}).",
-                    releaseTitle, attempt, maxRetries);
+                    "Error generating GitHub changelog single-post summary for {Title} (attempt {Attempt}/{MaxRetries}) Error {ex}.",
+                    releaseTitle, attempt, maxRetries, ex.Message);
 
                 if (attempt < maxRetries)
                 {
